@@ -1,3 +1,4 @@
 # Build Stuff
 bin/
 obj/
+.DS_Store
