@@ -1,65 +1,63 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Net.Http;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.Threading.Tasks;
 using BandwidthBuddy.Scripts;
+
 namespace BandwidthBuddy;
+
 class Program
 {
-    internal static readonly string[] serverAliases = ["--server", "-s"];
-    
+    private static readonly string[] serverAliases = { "--server", "-s" };
 
     static async Task Main(string[] args)
     {
-        RootCommand rootCommand = new("Bandwidth CLI");
+        var rootCommand = new RootCommand("Bandwidth CLI - A CLI for basic bandwidth monitoring");
 
-        Option<string> serverOption = new(serverAliases, "The server to test against");
+        Option<string> serverOption = new Option<string>(serverAliases, "Specify the server URL to test against (defaults to Google's homepage if not specified).");
         rootCommand.AddGlobalOption(serverOption);
 
-        rootCommand.SetHandler(() =>
-        {
-            Console.WriteLine("A CLI for basic bandwidth monitoring");
-        });
-
         // Download speed test
-        Command testDownloadSpeed = new("ds", "Test Download Speeds");
-        rootCommand.Add(testDownloadSpeed);
-        testDownloadSpeed.SetHandler(async (context) =>
+        Command testDownloadSpeed = new Command("down", "Test Download Speed");
+        testDownloadSpeed.SetHandler(async (string server) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://www.google.com";
-            if (!server.StartsWith("http://") && !server.StartsWith("https://"))
-            {
-                server = "https://" + server;
-            }
-            await SpeedTests.DownloadSpeedTest(ConvertToUri(server));
-        });
-        
+            Uri serverUri = ValidateAndConvertUri(server);
+            double results = await SpeedTests.DownloadSpeedTest(serverUri);
+            Console.WriteLine($"Download speed: {results:F2} Mbps");
+        }, serverOption);
+        rootCommand.AddCommand(testDownloadSpeed);
+
         // Upload speed test
-        Command testUploadSpeed = new("us", "Test Upload Speeds");
-        rootCommand.Add(testUploadSpeed);
-        testUploadSpeed.SetHandler(async (context) =>
+        Command testUploadSpeed = new Command("up", "Test Upload Speed");
+        testUploadSpeed.SetHandler(async (string server) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://www.google.com";
-            await SpeedTests.UploadSpeedTest(ConvertToUri(server));
-        });
+            Uri serverUri = ValidateAndConvertUri(server);
+            double results = await SpeedTests.UploadSpeedTest(serverUri);
+            Console.WriteLine($"Upload speed: {results:F2} Mbps");
+        }, serverOption);
+        rootCommand.AddCommand(testUploadSpeed);
 
         // Estimate available bandwidth
-        Command estimateBandwidth = new("eb", "Estimate Available Bandwidth");
-        rootCommand.Add(estimateBandwidth);
-        estimateBandwidth.SetHandler(async (context) =>
+        Command estimateBandwidth = new Command("est", "Estimate Available Bandwidth");
+        estimateBandwidth.SetHandler(async (string server) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://www.google.com";
-            await SpeedTests.EstimateAvailableBandwidth(ConvertToUri(server));
-        });
-        await rootCommand.InvokeAsync(args);
+            Uri serverUri = ValidateAndConvertUri(server);
+            double results = await SpeedTests.EstimateAvailableBandwidth(serverUri);
+            Console.WriteLine($"Estimated available bandwidth: {results:F2} Mbps");
+        }, serverOption);
+        rootCommand.AddCommand(estimateBandwidth);
 
+        // Parse and invoke the command line arguments
+        await rootCommand.InvokeAsync(args);
     }
 
-    static Uri ConvertToUri(string server)
+    static Uri ValidateAndConvertUri(string server)
     {
-        if (!server.StartsWith("http://") && !server.StartsWith("https://"))
+        if (string.IsNullOrWhiteSpace(server))
+        {
+            server = "https://www.google.com";
+        }
+        else if (!server.StartsWith("http://") && !server.StartsWith("https://"))
         {
             server = "https://" + server;
         }

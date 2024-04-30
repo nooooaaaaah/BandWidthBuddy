@@ -1,37 +1,54 @@
-// Purpose: Contains the SpeedTests class, which contains methods for testing download and upload speeds.
+// Purpose: Provides methods for testing download and upload speeds.
 using System.Diagnostics;
+using System.Net.Http;
+using System.Threading.Tasks;
+
 namespace BandwidthBuddy.Scripts;
 
-class SpeedTests
+public static class SpeedTests
 {
+    private static readonly HttpClient httpClient = new HttpClient(); // Reuse HttpClient across requests
+
     public static async Task<double> DownloadSpeedTest(Uri serverUrl)
     {
-        using (HttpClient httpClient = new())
+        Stopwatch stopwatch = new Stopwatch();
+        try
         {
-            Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
-            HttpResponseMessage response = await httpClient.GetAsync(serverUrl);
-            response.EnsureSuccessStatusCode();
-            await response.Content.ReadAsStreamAsync();
-            stopwatch.Stop();
-            TimeSpan elapsed = stopwatch.Elapsed;
-            return response.Content.Headers.ContentLength / elapsed.TotalSeconds / 1024 / 1024;
-            // Console.WriteLine($"Download speed: {response.Content.Headers.ContentLength / elapsed.TotalSeconds / 1024 / 1024} MB/s");
+            using (HttpResponseMessage response = await httpClient.GetAsync(serverUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                long? contentLength = response.Content.Headers.ContentLength;
+                await response.Content.ReadAsStreamAsync(); // Ensure full download for accurate timing
+                stopwatch.Stop();
+                return CalculateSpeed(contentLength, stopwatch.Elapsed);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error during download test: {ex.Message}");
+            return 0;
         }
     }
 
     public static async Task<double> UploadSpeedTest(Uri serverUrl)
     {
-        using (HttpClient httpClient = new())
+        byte[] content = new byte[10 * 1024 * 1024]; // 10 MB of data for upload test
+        Stopwatch stopwatch = new Stopwatch();
+        try
         {
-            byte[] content = new byte[10 * 1024 * 1024]; // 1 MB of data for upload test
-            Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
-            await httpClient.PostAsync(serverUrl, new ByteArrayContent(content));
-            stopwatch.Stop();
-            TimeSpan elapsed = stopwatch.Elapsed;
-            return content.Length / elapsed.TotalSeconds / 1024 / 1024;
-            // Console.WriteLine($"Upload speed: {content.Length / elapsed.TotalSeconds / 1024 / 1024} MB/s");
+            using (ByteArrayContent byteContent = new ByteArrayContent(content))
+            {
+                await httpClient.PostAsync(serverUrl, byteContent);
+                stopwatch.Stop();
+                return CalculateSpeed(content.Length, stopwatch.Elapsed);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error during upload test: {ex.Message}");
+            return 0;
         }
     }
 
@@ -39,10 +56,17 @@ class SpeedTests
     {
         double downloadSpeedMbps = await DownloadSpeedTest(serverUrl);
         double uploadSpeedMbps = await UploadSpeedTest(serverUrl);
+        return Math.Min(downloadSpeedMbps, uploadSpeedMbps); // Return the minimum of download and upload speeds
+    }
 
-        // Calculate available bandwidth as the minimum of download and upload speeds
-        double availableBandwidthMbps = Math.Min(downloadSpeedMbps, uploadSpeedMbps);
+    private static double CalculateSpeed(long? bytes, TimeSpan elapsed)
+    {
+        if (!bytes.HasValue)
+        {
+            return 0;
+        }
 
-        return availableBandwidthMbps;
+        // Convert bytes per second to megabits per second
+        return (bytes.Value * 8) / (1024.0 * 1024.0 * elapsed.TotalSeconds);
     }
 }
