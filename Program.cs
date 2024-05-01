@@ -1,66 +1,79 @@
-﻿using System;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using System.Threading.Tasks;
 using BandwidthBuddy.Scripts;
-
 namespace BandwidthBuddy;
-
 class Program
 {
-    private static readonly string[] serverAliases = { "--server", "-s" };
+    internal static readonly string[] serverAliases = { "--server", "-s" };
+    internal static readonly int BYTES = 100 * 1024 * 1024;
 
     static async Task Main(string[] args)
     {
-        var rootCommand = new RootCommand("Bandwidth CLI - A CLI for basic bandwidth monitoring");
+        RootCommand rootCommand = new("Bandwidth CLI");
+        rootCommand.Description = "A CLI tool for monitoring and testing network bandwidth, including download and upload speeds, latency, and bandwidth estimation.";
 
-        Option<string> serverOption = new Option<string>(serverAliases, "Specify the server URL to test against (defaults to Google's homepage if not specified).");
+        Option<string> serverOption = new(serverAliases, description: "The server to test against", getDefaultValue: () => "https://httpbin.org/anything");
         rootCommand.AddGlobalOption(serverOption);
 
-        // Download speed test
-        Command testDownloadSpeed = new Command("down", "Test Download Speed");
-        testDownloadSpeed.SetHandler(async (string server) =>
+        rootCommand.SetHandler(() =>
         {
-            Uri serverUri = ValidateAndConvertUri(server);
-            double results = await SpeedTests.DownloadSpeedTest(serverUri);
-            Console.WriteLine($"Download speed: {results:F2} Mbps");
-        }, serverOption);
-        rootCommand.AddCommand(testDownloadSpeed);
+            Console.WriteLine("Welcome to BandwidthBuddy! Use this CLI to monitor and test your network's performance.");
+            Console.WriteLine("\nAvailable Commands:");
+            foreach (var command in rootCommand.Children)
+            {
+                Console.WriteLine($"- {command.Name}: {command.Description}");
+            }
+        });
+
+        // Download speed test
+        Command testDownloadSpeed = new("down", "Test Download Speeds");
+        testDownloadSpeed.Description = "Performs a download speed test against a specified server.";
+        rootCommand.Add(testDownloadSpeed);
+        testDownloadSpeed.SetHandler(async (context) =>
+        {
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            await SpeedTests.DownloadSpeedTest(server, BYTES * 1000);
+            Console.WriteLine("Download speed test completed.");
+        });
 
         // Upload speed test
-        Command testUploadSpeed = new Command("up", "Test Upload Speed");
-        testUploadSpeed.SetHandler(async (string server) =>
+        Command testUploadSpeed = new("up", "Test Upload Speeds");
+        testUploadSpeed.Description = "Performs an upload speed test against a specified server.";
+        rootCommand.Add(testUploadSpeed);
+        testUploadSpeed.SetHandler(async (context) =>
         {
-            Uri serverUri = ValidateAndConvertUri(server);
-            double results = await SpeedTests.UploadSpeedTest(serverUri);
-            Console.WriteLine($"Upload speed: {results:F2} Mbps");
-        }, serverOption);
-        rootCommand.AddCommand(testUploadSpeed);
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            await SpeedTests.UploadSpeedTest(server, BYTES / 10);
+            Console.WriteLine("Upload speed test completed.");
+        });
 
         // Estimate available bandwidth
-        Command estimateBandwidth = new Command("est", "Estimate Available Bandwidth");
-        estimateBandwidth.SetHandler(async (string server) =>
+        Command estimateBandwidth = new("est", "Estimate Available Bandwidth");
+        estimateBandwidth.Description = "Estimates the available bandwidth to the specified server.";
+        rootCommand.Add(estimateBandwidth);
+        estimateBandwidth.SetHandler(async (context) =>
         {
-            Uri serverUri = ValidateAndConvertUri(server);
-            double results = await SpeedTests.EstimateAvailableBandwidth(serverUri);
-            Console.WriteLine($"Estimated available bandwidth: {results:F2} Mbps");
-        }, serverOption);
-        rootCommand.AddCommand(estimateBandwidth);
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            await SpeedTests.EstimateAvailableBandwidth(server, BYTES);
+            Console.WriteLine("Bandwidth estimation completed.");
+        });
 
-        // Parse and invoke the command line arguments
+        // Add a new command for latency test
+        Command testLatency = new("ping", "Test Network Latency");
+        testLatency.Description = "Tests the network latency to the specified server.";
+        rootCommand.Add(testLatency);
+        testLatency.SetHandler(async (context) =>
+        {
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            await SpeedTests.LatencyTest(server);
+            Console.WriteLine("Latency test completed.");
+        });
+
+        if (args.Length == 0)
+        {
+            rootCommand.Invoke("-h");
+            return;
+        }
+
         await rootCommand.InvokeAsync(args);
-    }
-
-    static Uri ValidateAndConvertUri(string server)
-    {
-        if (string.IsNullOrWhiteSpace(server))
-        {
-            server = "https://www.google.com";
-        }
-        else if (!server.StartsWith("http://") && !server.StartsWith("https://"))
-        {
-            server = "https://" + server;
-        }
-        return new Uri(server);
     }
 }

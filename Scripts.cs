@@ -1,72 +1,156 @@
-// Purpose: Provides methods for testing download and upload speeds.
+using System;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace BandwidthBuddy.Scripts;
-
-public static class SpeedTests
+namespace BandwidthBuddy.Scripts
 {
-    private static readonly HttpClient httpClient = new HttpClient(); // Reuse HttpClient across requests
-
-    public static async Task<double> DownloadSpeedTest(Uri serverUrl)
+    public static class SpeedTests
     {
-        Stopwatch stopwatch = new Stopwatch();
-        try
+        private static readonly HttpClient httpClient = new HttpClient()
         {
-            stopwatch.Start();
-            using (HttpResponseMessage response = await httpClient.GetAsync(serverUrl, HttpCompletionOption.ResponseHeadersRead))
+            Timeout = TimeSpan.FromSeconds(30)  // Set a global 30-second timeout
+        };
+
+        public static async Task<double> DownloadSpeedTest(string serverUrl, int dataSizeInBytes)
+        {
+            string url = $"{ConvertToUri(serverUrl)}/bytes/{dataSizeInBytes}";
+            Stopwatch stopwatch = new Stopwatch();
+
+            try
             {
+                stopwatch.Start();
+                HttpResponseMessage response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
-                long? contentLength = response.Content.Headers.ContentLength;
-                await response.Content.ReadAsStreamAsync(); // Ensure full download for accurate timing
+                byte[] data = await response.Content.ReadAsByteArrayAsync();
                 stopwatch.Stop();
-                return CalculateSpeed(contentLength, stopwatch.Elapsed);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error during download test: {ex.Message}");
-            return 0;
-        }
-    }
 
-    public static async Task<double> UploadSpeedTest(Uri serverUrl)
-    {
-        byte[] content = new byte[10 * 1024 * 1024]; // 10 MB of data for upload test
-        Stopwatch stopwatch = new Stopwatch();
-        try
-        {
-            stopwatch.Start();
-            using (ByteArrayContent byteContent = new ByteArrayContent(content))
+                long bytesReceived = data.Length;
+                double seconds = stopwatch.Elapsed.TotalSeconds;
+                Console.WriteLine($"Download test elapsed time: {seconds} seconds.");
+                return CalculateSpeed(bytesReceived, seconds);
+            }
+            catch (HttpRequestException e)
             {
-                await httpClient.PostAsync(serverUrl, byteContent);
-                stopwatch.Stop();
-                return CalculateSpeed(content.Length, stopwatch.Elapsed);
+                Console.WriteLine($"Network or HTTP error during download test: {e.Message}");
+                return 0;
+            }
+            catch (TaskCanceledException e)
+            {
+                Console.WriteLine($"Request timed out: {e.Message}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during download test: {ex.Message}");
+                return 0;
             }
         }
-        catch (Exception ex)
+
+        public static async Task<double> UploadSpeedTest(string serverUrl, int dataSizeInBytes)
         {
-            Console.WriteLine($"Error during upload test: {ex.Message}");
-            return 0;
+            string url = $"{ConvertToUri(serverUrl)}/post";
+            byte[] data = new byte[dataSizeInBytes];
+            new Random().NextBytes(data);
+            ByteArrayContent content = new ByteArrayContent(data);
+            Stopwatch stopwatch = new Stopwatch();
+
+            try
+            {
+                stopwatch.Start();
+                HttpResponseMessage response = await httpClient.PostAsync(url, content);
+                response.EnsureSuccessStatusCode();
+                stopwatch.Stop();
+
+                long bytesSent = data.Length;
+                double seconds = stopwatch.Elapsed.TotalSeconds;
+                Console.WriteLine($"Upload test elapsed time: {seconds} seconds.");
+                return CalculateSpeed(bytesSent, seconds);
+            }
+            catch (HttpRequestException e)
+            {
+                Console.WriteLine($"Network or HTTP error during upload test: {e.Message}");
+                return 0;
+            }
+            catch (TaskCanceledException e)
+            {
+                Console.WriteLine($"Request timed out: {e.Message}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during upload test: {ex.Message}");
+                return 0;
+            }
         }
-    }
 
-    public static async Task<double> EstimateAvailableBandwidth(Uri serverUrl)
-    {
-        double downloadSpeedMbps = await DownloadSpeedTest(serverUrl);
-        double uploadSpeedMbps = await UploadSpeedTest(serverUrl);
-        return Math.Min(downloadSpeedMbps, uploadSpeedMbps); // Return the minimum of download and upload speeds
-    }
-
-    private static double CalculateSpeed(long? bytes, TimeSpan elapsed)
-    {
-        if (!bytes.HasValue)
+        public static async Task<double> EstimateAvailableBandwidth(string serverUrl, int dataSizeInBytes)
         {
-            return 0;
+            double downloadSpeedMbps = await DownloadSpeedTest(serverUrl, dataSizeInBytes);
+            double uploadSpeedMbps = await UploadSpeedTest(serverUrl, dataSizeInBytes);
+
+            double availableBandwidthMbps = Math.Min(downloadSpeedMbps, uploadSpeedMbps);
+            Console.WriteLine($"Download Speed: {downloadSpeedMbps} MBps\nUpload Speed: {uploadSpeedMbps} MBps");
+            Console.WriteLine($"Estimated Available Bandwidth: {availableBandwidthMbps:F5} MBps");
+            return availableBandwidthMbps;
         }
 
-        // Convert bytes per second to megabits per second
-        return (bytes.Value * 8) / (1024.0 * 1024.0 * elapsed.TotalSeconds);
+        public static async Task<double> LatencyTest(string serverUrl)
+        {
+            string url = $"{ConvertToUri(serverUrl)}/ping";
+            Stopwatch stopwatch = new Stopwatch();
+
+            try
+            {
+                stopwatch.Start();
+                HttpResponseMessage response = await httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+                stopwatch.Stop();
+
+                double latencyInMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
+                Console.WriteLine($"Ping latency: {latencyInMilliseconds} ms.");
+                return latencyInMilliseconds;
+            }
+            catch (HttpRequestException e)
+            {
+                Console.WriteLine($"Network or HTTP error during latency test: {e.Message}");
+                return double.MaxValue;  // Indicate an error with the maximum value
+            }
+            catch (TaskCanceledException e)
+            {
+                Console.WriteLine($"Request timed out: {e.Message}");
+                return double.MaxValue;  // Indicate a timeout with the maximum value
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during latency test: {ex.Message}");
+                return double.MaxValue;  // Indicate a general error with the maximum value
+            }
+        }
+
+        private static double CalculateSpeed(long bytes, double seconds)
+        {
+            if (seconds <= 0)
+            {
+                Console.WriteLine("Elapsed time is zero or negative, cannot calculate speed.");
+                return 0;
+            }
+
+            double bits = bytes * 8;
+            double megabits = bits / 1_000_000.0;  // Convert bits to megabits using the standard 1 Megabit = 10^6 bits
+            double speedMbps = megabits / seconds;
+            double speedMBps = speedMbps / 8;  // Convert Mbps to MBps
+            return speedMBps;
+        }
+
+
+        private static Uri ConvertToUri(string server)
+        {
+            if (!server.StartsWith("http://") && !server.StartsWith("https://"))
+            {
+                server = "http://" + server + ":8000";  // Defaulting to HTTPS for security
+            }
+            return new Uri(server);
+        }
     }
 }
