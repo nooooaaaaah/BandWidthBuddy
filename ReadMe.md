@@ -10,9 +10,10 @@ To install Bandwidth Buddy, clone the repository and build the project using Vis
 
 To use Bandwidth Buddy, run the `BandwidthBuddy` executable with the appropriate command and options. The available commands are:
 
-- `ds`: Test download speeds
-- `us`: Test upload speeds
-- `eb`: Estimate available bandwidth
+- `down`: Test download speeds
+- `up`: Test upload speeds
+- `est`: Estimate available bandwidth
+- `ping`: Estimate Latency
 
 The available options are:
 

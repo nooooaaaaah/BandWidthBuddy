@@ -9,12 +9,13 @@ namespace BandwidthBuddy.Scripts
     {
         private static readonly HttpClient httpClient = new HttpClient()
         {
-            Timeout = TimeSpan.FromSeconds(30)  // Set a global 30-second timeout
+            Timeout = TimeSpan.FromSeconds(60)  // Set a global 30-second timeout
         };
 
         public static async Task<double> DownloadSpeedTest(string serverUrl, int dataSizeInBytes)
         {
-            string url = $"{ConvertToUri(serverUrl)}/bytes/{dataSizeInBytes}";
+            string url = $"{ConvertToUri(serverUrl)}/bytes/{dataSizeInBytes * 100}";
+            Console.WriteLine(url);
             Stopwatch stopwatch = new Stopwatch();
 
             try
@@ -27,8 +28,11 @@ namespace BandwidthBuddy.Scripts
 
                 long bytesReceived = data.Length;
                 double seconds = stopwatch.Elapsed.TotalSeconds;
+                double downloadSpeedMbps = CalculateSpeed(bytesReceived, seconds);
+
                 Console.WriteLine($"Download test elapsed time: {seconds} seconds.");
-                return CalculateSpeed(bytesReceived, seconds);
+                Console.WriteLine($"Download Speed: {downloadSpeedMbps} MBps");
+                return downloadSpeedMbps;
             }
             catch (HttpRequestException e)
             {
@@ -64,8 +68,10 @@ namespace BandwidthBuddy.Scripts
 
                 long bytesSent = data.Length;
                 double seconds = stopwatch.Elapsed.TotalSeconds;
+                double uploadSpeedMbps = CalculateSpeed(bytesSent, seconds);
                 Console.WriteLine($"Upload test elapsed time: {seconds} seconds.");
-                return CalculateSpeed(bytesSent, seconds);
+                Console.WriteLine($"Upload Speed: {uploadSpeedMbps} MBps");
+                return uploadSpeedMbps;
             }
             catch (HttpRequestException e)
             {
@@ -90,7 +96,6 @@ namespace BandwidthBuddy.Scripts
             double uploadSpeedMbps = await UploadSpeedTest(serverUrl, dataSizeInBytes);
 
             double availableBandwidthMbps = Math.Min(downloadSpeedMbps, uploadSpeedMbps);
-            Console.WriteLine($"Download Speed: {downloadSpeedMbps} MBps\nUpload Speed: {uploadSpeedMbps} MBps");
             Console.WriteLine($"Estimated Available Bandwidth: {availableBandwidthMbps:F5} MBps");
             return availableBandwidthMbps;
         }

@@ -5,13 +5,14 @@ class Program
 {
     internal static readonly string[] serverAliases = { "--server", "-s" };
     internal static readonly int BYTES = 100 * 1024 * 1024;
+    internal static readonly string defaultServer = "https://httpbin.org/";
 
     static async Task Main(string[] args)
     {
         RootCommand rootCommand = new("Bandwidth CLI");
         rootCommand.Description = "A CLI tool for monitoring and testing network bandwidth, including download and upload speeds, latency, and bandwidth estimation.";
 
-        Option<string> serverOption = new(serverAliases, description: "The server to test against", getDefaultValue: () => "https://httpbin.org/anything");
+        Option<string> serverOption = new(serverAliases, description: "The server to test against", getDefaultValue: () => defaultServer);
         rootCommand.AddGlobalOption(serverOption);
 
         rootCommand.SetHandler(() =>
@@ -30,8 +31,8 @@ class Program
         rootCommand.Add(testDownloadSpeed);
         testDownloadSpeed.SetHandler(async (context) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
-            await SpeedTests.DownloadSpeedTest(server, BYTES * 1000);
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? defaultServer;
+            await SpeedTests.DownloadSpeedTest(server, BYTES);
             Console.WriteLine("Download speed test completed.");
         });
 
@@ -41,8 +42,8 @@ class Program
         rootCommand.Add(testUploadSpeed);
         testUploadSpeed.SetHandler(async (context) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
-            await SpeedTests.UploadSpeedTest(server, BYTES / 10);
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? defaultServer;
+            await SpeedTests.UploadSpeedTest(server, BYTES);
             Console.WriteLine("Upload speed test completed.");
         });
 
@@ -52,7 +53,7 @@ class Program
         rootCommand.Add(estimateBandwidth);
         estimateBandwidth.SetHandler(async (context) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? defaultServer;
             await SpeedTests.EstimateAvailableBandwidth(server, BYTES);
             Console.WriteLine("Bandwidth estimation completed.");
         });
@@ -63,7 +64,7 @@ class Program
         rootCommand.Add(testLatency);
         testLatency.SetHandler(async (context) =>
         {
-            string server = context.ParseResult.GetValueForOption(serverOption) ?? "https://httpbin.org/anything";
+            string server = context.ParseResult.GetValueForOption(serverOption) ?? defaultServer;
             await SpeedTests.LatencyTest(server);
             Console.WriteLine("Latency test completed.");
         });
